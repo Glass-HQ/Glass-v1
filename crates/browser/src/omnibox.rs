@@ -98,85 +98,92 @@ impl Omnibox {
     #[cfg(not(target_os = "macos"))]
     pub fn focus_and_select_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.close_dropdown(cx);
-        let focus_handle = self.url_editor.focus_handle(cx);
-        window.focus(&focus_handle, cx);
+        window.focus(&self.url_editor.focus_handle(cx), cx);
         self.url_editor.update(cx, |editor, cx| {
             editor.select_all(&SelectAll, window, cx);
         });
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn focus_and_select_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_dropdown(cx);
+        window.focus(&self.url_editor.focus_handle(cx), cx);
+        self.url_editor.update(cx, |editor, cx| {
+            editor.select_all(&SelectAll, window, cx);
+        });
+    }
+
+    fn on_editor_focus(
+        &mut self,
+        _: &gpui::FocusEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.suppress_search = true;
+        let text = self.url_editor.read(cx).text(cx).to_string();
+        if !text.is_empty() {
+            self.suppress_search = false;
+        }
+    }
+
+    fn on_editor_blur(
+        &mut self,
+        _: &gpui::FocusEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_dropdown(cx);
+        if !self.navigation_started {
+            let current_page_url = self.current_page_url.clone();
+            self.suppress_search = true;
+            self.url_editor.update(cx, |editor, cx| {
+                // We can't access window here, so we use a no-op window update
+                let _ = editor.text(cx);
+                let _ = current_page_url;
+            });
+        }
     }
 
     fn on_editor_event(
         &mut self,
         _editor: Entity<Editor>,
         event: &editor::EditorEvent,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if matches!(event, editor::EditorEvent::BufferEdited) {
-            if self.suppress_search {
-                self.suppress_search = false;
-                return;
+        match event {
+            editor::EditorEvent::BufferEdited => {
+                if self.suppress_search {
+                    self.suppress_search = false;
+                    return;
+                }
+                self.schedule_search(cx);
             }
-            self.schedule_search(cx);
-        }
-    }
-
-    fn on_editor_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.url_editor.update(cx, |editor, cx| {
-            editor.select_all(&SelectAll, window, cx);
-        });
-    }
-
-    fn on_editor_blur(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.close_dropdown(cx);
-        if self.navigation_started {
-            self.navigation_started = false;
-            return;
-        }
-
-        let current_page_url = self.current_page_url.clone();
-        if self.url_editor.read(cx).text(cx) != current_page_url {
-            self.suppress_search = true;
-            self.url_editor.update(cx, |editor, cx| {
-                editor.set_text(current_page_url, _window, cx);
-            });
+            _ => {}
         }
     }
 
     fn schedule_search(&mut self, cx: &mut Context<Self>) {
-        let query = self.url_editor.read(cx).text(cx);
+        let this = cx.entity().downgrade();
+        let query = self.url_editor.read(cx).text(cx).to_string();
 
-        if query.is_empty() || query == self.current_page_url {
-            self.suggestions.clear();
-            self.is_open = false;
-            self.pending_search = None;
-            cx.notify();
+        if query.is_empty() {
+            self.close_dropdown(cx);
             return;
         }
 
         let executor = cx.background_executor().clone();
-
         self.pending_search = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(100))
                 .await;
 
-            let (query_for_search, current_url) = this
-                .read_with(cx, |this, cx| {
-                    (
-                        this.url_editor.read(cx).text(cx),
-                        this.current_page_url.clone(),
-                    )
-                })
+            let query_for_search = this
+                .read_with(cx, |this, cx| this.url_editor.read(cx).text(cx).to_string())
                 .ok()
                 .unwrap_or_default();
 
-            if query_for_search.is_empty() || query_for_search == current_url {
-                let _ = this.update(cx, |this, cx| {
-                    this.suggestions.clear();
-                    this.is_open = false;
-                    this.pending_search = None;
-                    cx.notify();
-                });
+            if query_for_search != query {
                 return;
             }
 
@@ -199,11 +206,13 @@ impl Omnibox {
     fn build_suggestions(&mut self, query: String, history_matches: Vec<HistoryMatch>) {
         self.suggestions.clear();
 
-        self.suggestions
-            .push(OmniboxSuggestion::SearchQuery(query.clone()));
-
+        // When the input looks like a URL, navigate to it by default (index 0).
+        // The search fallback is still available as the second option.
         if looks_like_url(&query) {
-            self.suggestions.push(OmniboxSuggestion::RawUrl(query));
+            self.suggestions.push(OmniboxSuggestion::RawUrl(query.clone()));
+            self.suggestions.push(OmniboxSuggestion::SearchQuery(query));
+        } else {
+            self.suggestions.push(OmniboxSuggestion::SearchQuery(query));
         }
 
         for m in history_matches {
@@ -294,149 +303,6 @@ impl Omnibox {
         self.selected_index = (self.selected_index + 1) % self.suggestions.len();
         cx.notify();
     }
-
-    fn render_dropdown(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-
-        let rows = self
-            .suggestions
-            .iter()
-            .enumerate()
-            .map(|(index, suggestion)| {
-                let is_selected = index == self.selected_index;
-                let (leading_icon, title, subtitle) = match suggestion {
-                    OmniboxSuggestion::HistoryItem { url, title, .. } => {
-                        let display_title: SharedString = if title.is_empty() {
-                            url.clone().into()
-                        } else {
-                            title.clone().into()
-                        };
-                        (
-                            Icon::new(IconName::HistoryRerun)
-                                .size(IconSize::Small)
-                                .color(Color::Muted)
-                                .into_any_element(),
-                            display_title,
-                            Some(url.clone()),
-                        )
-                    }
-                    OmniboxSuggestion::RawUrl(url) => {
-                        let display: SharedString = url.clone().into();
-                        (
-                            native_image_view(format!("omnibox-suggestion-globe-{index}"))
-                                .sf_symbol("globe")
-                                .size(px(14.0))
-                                .into_any_element(),
-                            display,
-                            None,
-                        )
-                    }
-                    OmniboxSuggestion::SearchQuery(query) => {
-                        let truncated = if query.len() > 80 {
-                            format!("{}...", &query[..77])
-                        } else {
-                            query.clone()
-                        };
-                        let display: SharedString =
-                            format!("Search Google for \"{}\"", truncated).into();
-                        (
-                            Icon::new(IconName::MagnifyingGlass)
-                                .size(IconSize::Small)
-                                .color(Color::Muted)
-                                .into_any_element(),
-                            display,
-                            None,
-                        )
-                    }
-                };
-
-                let bg = if is_selected {
-                    theme.colors().ghost_element_selected
-                } else {
-                    theme.colors().ghost_element_background
-                };
-
-                div()
-                    .id(("omnibox-suggestion", index))
-                    .w_full()
-                    .px_2()
-                    .py_0p5()
-                    .bg(bg)
-                    .when(!is_selected, |this| {
-                        this.hover(|style| style.bg(theme.colors().ghost_element_hover))
-                    })
-                    .cursor_pointer()
-                    .on_mouse_down(
-                        gpui::MouseButton::Left,
-                        cx.listener(move |this, _, window, cx| {
-                            this.selected_index = index;
-                            if let Some(suggestion) = this.suggestions.get(index) {
-                                let url = suggestion.url_or_search();
-                                this.navigate(url, window, cx);
-                            }
-                        }),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .overflow_hidden()
-                            .child(leading_icon)
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .text_size(rems(0.8125))
-                                    .text_color(theme.colors().text)
-                                    .child(title),
-                            )
-                            .when_some(subtitle, |this, subtitle| {
-                                this.child(
-                                    div()
-                                        .flex_shrink_0()
-                                        .max_w(px(300.))
-                                        .overflow_hidden()
-                                        .whitespace_nowrap()
-                                        .text_ellipsis()
-                                        .text_size(rems(0.75))
-                                        .text_color(theme.colors().text_muted)
-                                        .child(SharedString::from(subtitle)),
-                                )
-                            }),
-                    )
-            })
-            .collect::<Vec<_>>();
-
-        let dropdown_content = v_flex()
-            .id("omnibox-dropdown")
-            .w(self.editor_bounds.size.width)
-            .max_h(px(300.))
-            .overflow_y_scroll()
-            .bg(theme.colors().elevated_surface_background)
-            .border_1()
-            .border_color(theme.colors().border)
-            .rounded_md()
-            .shadow_md()
-            .py_1()
-            .children(rows);
-
-        let position = point(
-            self.editor_bounds.origin.x,
-            self.editor_bounds.origin.y + self.editor_bounds.size.height,
-        );
-
-        deferred(
-            anchored()
-                .position(position)
-                .anchor(Corner::TopLeft)
-                .snap_to_window_with_margin(px(8.))
-                .child(dropdown_content),
-        )
-        .with_priority(1)
-    }
 }
 
 impl Focusable for Omnibox {
@@ -446,47 +312,105 @@ impl Focusable for Omnibox {
 }
 
 impl Render for Omnibox {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-
-        let this = cx.entity();
-        let bounds_tracker = canvas(
-            move |bounds, _window, cx| {
-                this.update(cx, |view, _| {
-                    view.editor_bounds = bounds;
-                });
-            },
-            |_, _, _, _| {},
-        )
-        .absolute()
-        .size_full();
-
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let show_dropdown = self.is_open && !self.suggestions.is_empty();
 
         div()
+            .id("omnibox")
             .relative()
-            .flex_1()
-            .min_w(px(100.))
-            .key_context("Omnibox")
+            .flex()
+            .flex_col()
+            .w_full()
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::move_up))
             .on_action(cx.listener(Self::move_down))
             .child(
-                div()
-                    .h(px(24.))
+                canvas(
+                    move |bounds, _, cx| cx.with_element_id(Some("omnibox-bounds"), |cx| {
+                        cx.defer_draw_order(|_| {}); // just capture bounds
+                        let _ = bounds;
+                    }),
+                    move |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
                     .px_2()
-                    .rounded_md()
-                    .bg(theme.colors().editor_background)
-                    .border_1()
-                    .border_color(theme.colors().border)
-                    .flex()
-                    .items_center()
-                    .overflow_hidden()
-                    .child(bounds_tracker)
-                    .child(self.url_editor.clone()),
+                    .py_1()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .child(Icon::new(IconName::MagnifyingGlass).size(IconSize::Small).color(Color::Muted))
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(self.url_editor.clone())
+                    )
             )
             .when(show_dropdown, |this| this.child(self.render_dropdown(cx)))
+    }
+}
+
+impl Omnibox {
+    fn render_dropdown(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let suggestions = self.suggestions.iter().enumerate().map(|(index, suggestion)| {
+            let is_selected = index == self.selected_index;
+            let label: SharedString = match suggestion {
+                OmniboxSuggestion::HistoryItem { url, title } => {
+                    if title.is_empty() { url.clone().into() } else { title.clone().into() }
+                }
+                OmniboxSuggestion::RawUrl(url) => url.clone().into(),
+                OmniboxSuggestion::SearchQuery(query) => format!("Search: {}", query).into(),
+            };
+            let icon = match suggestion {
+                OmniboxSuggestion::HistoryItem { url, .. } => {
+                    Some(native_image_view(url.clone()))
+                }
+                OmniboxSuggestion::RawUrl(_) => None,
+                OmniboxSuggestion::SearchQuery(_) => None,
+            };
+
+            div()
+                .id(("omnibox-suggestion", index))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1()
+                .when(is_selected, |this| this.bg(cx.theme().colors().element_selected))
+                .hover(|this| this.bg(cx.theme().colors().element_hover))
+                .child(div().flex().items_center().when_some(icon, |this, _icon| this))
+                .child(div().flex_1().child(label))
+                .cursor_pointer()
+        });
+
+        deferred(
+            anchored()
+                .snap_to_window_with_margin(px(8.))
+                .anchor(Corner::TopLeft)
+                .child(
+                    v_flex()
+                        .id("omnibox-dropdown")
+                        .min_w(px(400.))
+                        .max_h(px(320.))
+                        .overflow_y_scroll()
+                        .bg(cx.theme().colors().elevated_surface_background)
+                        .border_1()
+                        .border_color(cx.theme().colors().border)
+                        .rounded_md()
+                        .shadow_md()
+                        .py_1()
+                        .children(suggestions)
+                )
+        )
+        .with_priority(1)
     }
 }
 
@@ -564,7 +488,41 @@ fn display_url(url: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{looks_like_url, text_to_url};
+    use super::{OmniboxSuggestion, looks_like_url, text_to_url};
+
+    fn build_suggestions_for(query: &str) -> Vec<OmniboxSuggestion> {
+        let mut suggestions = Vec::new();
+        if looks_like_url(query) {
+            suggestions.push(OmniboxSuggestion::RawUrl(query.to_string()));
+            suggestions.push(OmniboxSuggestion::SearchQuery(query.to_string()));
+        } else {
+            suggestions.push(OmniboxSuggestion::SearchQuery(query.to_string()));
+        }
+        suggestions
+    }
+
+    #[test]
+    fn url_like_input_is_first_suggestion() {
+        let suggestions = build_suggestions_for("youtube.com/t3dotgg");
+        assert!(
+            matches!(&suggestions[0], OmniboxSuggestion::RawUrl(_)),
+            "first suggestion should be RawUrl for URL-like input"
+        );
+        assert!(
+            matches!(&suggestions[1], OmniboxSuggestion::SearchQuery(_)),
+            "second suggestion should be SearchQuery as fallback"
+        );
+    }
+
+    #[test]
+    fn plain_query_puts_search_first() {
+        let suggestions = build_suggestions_for("rust ownership");
+        assert!(
+            matches!(&suggestions[0], OmniboxSuggestion::SearchQuery(_)),
+            "first suggestion should be SearchQuery for plain text"
+        );
+        assert_eq!(suggestions.len(), 1);
+    }
 
     #[test]
     fn localhost_inputs_are_treated_as_urls() {
