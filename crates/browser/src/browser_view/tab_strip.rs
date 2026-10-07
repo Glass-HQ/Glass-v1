@@ -242,12 +242,19 @@ impl Render for BrowserSidebarPanel {
 
 impl BrowserView {
     #[cfg(not(target_os = "macos"))]
-    pub(super) fn render_tab_strip(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn pinned_tab_count(&self, cx: &mut gpui::Context<Self>) -> usize {
+        self.tabs.iter().filter(|t| t.read(cx).is_pinned()).count()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub(super) fn render_tab_strip(
+        &mut self,
+        pinned_count: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
         let active_index = self.active_tab_index;
         let view = cx.entity().downgrade();
-
-        let pinned_count = self.tabs.iter().filter(|t| t.read(cx).is_pinned()).count();
 
         h_flex()
             .w_full()
@@ -613,12 +620,15 @@ impl BrowserView {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub(super) fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_sidebar(
+        &mut self,
+        pinned_count: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
         let active_index = self.active_tab_index;
         let view = cx.entity().downgrade();
 
-        let pinned_count = self.tabs.iter().filter(|t| t.read(cx).is_pinned()).count();
         let grid_cols = pinned_count.min(3);
 
         v_flex()

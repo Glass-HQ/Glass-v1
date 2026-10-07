@@ -11,6 +11,8 @@ use cef::{
     Browser, ImplLifeSpanHandler, LifeSpanHandler, WrapLifeSpanHandler, rc::Rc as _,
     wrap_life_span_handler,
 };
+#[cfg(target_os = "macos")]
+use core_video::pixel_buffer::CVPixelBuffer;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
@@ -26,8 +28,15 @@ impl OsrLifeSpanHandler {
 
     fn popup_client() -> cef::Client {
         let render_state = Arc::new(Mutex::new(RenderState::default()));
+        #[cfg(target_os = "macos")]
+        let current_frame: Arc<Mutex<Option<CVPixelBuffer>>> = Arc::new(Mutex::new(None));
         let (popup_sender, _popup_receiver) = crate::events::event_channel();
-        ClientBuilder::build_for_popup(render_state, popup_sender)
+        ClientBuilder::build_for_popup(
+            render_state,
+            #[cfg(target_os = "macos")]
+            current_frame,
+            popup_sender,
+        )
     }
 }
 

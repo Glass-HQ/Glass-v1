@@ -24,6 +24,8 @@ use crate::permission_handler::{OsrPermissionHandler, PermissionHandlerBuilder};
 use crate::render_handler::{OsrRenderHandler, RenderHandlerBuilder, RenderState};
 use crate::request_handler::{OsrRequestHandler, RequestHandlerBuilder};
 use crate::text_input::extract_text_input_state_from_message;
+#[cfg(target_os = "macos")]
+use core_video::pixel_buffer::CVPixelBuffer;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -189,16 +191,29 @@ wrap_client! {
 }
 
 impl ClientBuilder {
-    pub fn build(render_state: Arc<Mutex<RenderState>>, event_sender: EventSender) -> cef::Client {
-        Self::build_inner(render_state, event_sender, KeyboardHandlerBuilder::build())
-    }
-
-    pub fn build_for_popup(
+    pub fn build(
         render_state: Arc<Mutex<RenderState>>,
+        #[cfg(target_os = "macos")] current_frame: Arc<Mutex<Option<CVPixelBuffer>>>,
         event_sender: EventSender,
     ) -> cef::Client {
         Self::build_inner(
             render_state,
+            #[cfg(target_os = "macos")]
+            current_frame,
+            event_sender,
+            KeyboardHandlerBuilder::build(),
+        )
+    }
+
+    pub fn build_for_popup(
+        render_state: Arc<Mutex<RenderState>>,
+        #[cfg(target_os = "macos")] current_frame: Arc<Mutex<Option<CVPixelBuffer>>>,
+        event_sender: EventSender,
+    ) -> cef::Client {
+        Self::build_inner(
+            render_state,
+            #[cfg(target_os = "macos")]
+            current_frame,
             event_sender,
             PopupKeyboardHandlerBuilder::build(),
         )
@@ -206,10 +221,16 @@ impl ClientBuilder {
 
     fn build_inner(
         render_state: Arc<Mutex<RenderState>>,
+        #[cfg(target_os = "macos")] current_frame: Arc<Mutex<Option<CVPixelBuffer>>>,
         event_sender: EventSender,
         keyboard_handler: cef::KeyboardHandler,
     ) -> cef::Client {
-        let render_handler = OsrRenderHandler::new(render_state, event_sender.clone());
+        let render_handler = OsrRenderHandler::new(
+            render_state,
+            #[cfg(target_os = "macos")]
+            current_frame,
+            event_sender.clone(),
+        );
         let load_handler = OsrLoadHandler::new(event_sender.clone());
         let display_handler = OsrDisplayHandler::new(event_sender.clone());
         let life_span_handler = OsrLifeSpanHandler::new(event_sender.clone());

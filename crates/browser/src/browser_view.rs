@@ -848,7 +848,9 @@ impl BrowserView {
         match event {
             #[cfg(target_os = "macos")]
             TabEvent::FrameReady => {
-                cx.notify();
+                if self.surface_state == BrowserSurfaceState::Visible {
+                    cx.notify();
+                }
             }
             TabEvent::NavigateToUrl(url) => {
                 let url = url.clone();
@@ -1493,26 +1495,29 @@ impl Render for BrowserView {
             .into_any_element();
 
         #[cfg(not(target_os = "macos"))]
-        let element = match self.tab_bar_mode {
-            TabBarMode::Horizontal => element
-                .flex_col()
-                .child(div().mt(px(-1.)).child(self.render_tab_strip(cx)))
-                .child(self.bookmark_bar.clone())
-                .child(self.render_browser_content(window, cx))
-                .into_any_element(),
-            TabBarMode::Sidebar => element
-                .flex_row()
-                .child(self.render_sidebar(cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .flex_col()
-                        .overflow_hidden()
-                        .child(self.bookmark_bar.clone())
-                        .child(self.render_browser_content(window, cx)),
-                )
-                .into_any_element(),
+        let element = {
+            let pinned_count = self.pinned_tab_count(cx);
+            match self.tab_bar_mode {
+                TabBarMode::Horizontal => element
+                    .flex_col()
+                    .child(div().mt(px(-1.)).child(self.render_tab_strip(pinned_count, cx)))
+                    .child(self.bookmark_bar.clone())
+                    .child(self.render_browser_content(window, cx))
+                    .into_any_element(),
+                TabBarMode::Sidebar => element
+                    .flex_row()
+                    .child(self.render_sidebar(pinned_count, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .overflow_hidden()
+                            .child(self.bookmark_bar.clone())
+                            .child(self.render_browser_content(window, cx)),
+                    )
+                    .into_any_element(),
+            }
         };
 
         div()
