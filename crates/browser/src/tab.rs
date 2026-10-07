@@ -105,6 +105,8 @@ pub struct BrowserTab {
     browser_id: Option<i32>,
     client: cef::Client,
     render_state: Arc<Mutex<RenderState>>,
+    #[cfg(target_os = "macos")]
+    current_frame: Arc<Mutex<Option<CVPixelBuffer>>>,
     event_receiver: EventReceiver,
     url: String,
     title: String,
@@ -127,13 +129,22 @@ impl EventEmitter<TabEvent> for BrowserTab {}
 impl BrowserTab {
     pub fn new(_cx: &mut Context<Self>) -> Self {
         let render_state = Arc::new(Mutex::new(RenderState::default()));
+        #[cfg(target_os = "macos")]
+        let current_frame: Arc<Mutex<Option<CVPixelBuffer>>> = Arc::new(Mutex::new(None));
         let (sender, receiver) = events::event_channel();
-        let client = ClientBuilder::build(render_state.clone(), sender);
+        let client = ClientBuilder::build(
+            render_state.clone(),
+            #[cfg(target_os = "macos")]
+            current_frame.clone(),
+            sender,
+        );
 
         Self {
             browser_id: None,
             client,
             render_state,
+            #[cfg(target_os = "macos")]
+            current_frame,
             event_receiver: receiver,
             url: String::from("glass://newtab"),
             title: String::from("New Tab"),
@@ -160,13 +171,22 @@ impl BrowserTab {
         _cx: &mut Context<Self>,
     ) -> Self {
         let render_state = Arc::new(Mutex::new(RenderState::default()));
+        #[cfg(target_os = "macos")]
+        let current_frame: Arc<Mutex<Option<CVPixelBuffer>>> = Arc::new(Mutex::new(None));
         let (sender, receiver) = events::event_channel();
-        let client = ClientBuilder::build(render_state.clone(), sender);
+        let client = ClientBuilder::build(
+            render_state.clone(),
+            #[cfg(target_os = "macos")]
+            current_frame.clone(),
+            sender,
+        );
 
         Self {
             browser_id: None,
             client,
             render_state,
+            #[cfg(target_os = "macos")]
+            current_frame,
             event_receiver: receiver,
             url,
             title,
@@ -225,7 +245,9 @@ impl BrowserTab {
                 }
                 #[cfg(target_os = "macos")]
                 BrowserEvent::FrameReady => {
-                    cx.emit(TabEvent::FrameReady);
+                    if !is_suspended {
+                        cx.emit(TabEvent::FrameReady);
+                    }
                 }
                 BrowserEvent::BrowserCreated => {}
                 BrowserEvent::LoadError { url, error_text } => {
@@ -672,7 +694,7 @@ impl BrowserTab {
 
     #[cfg(target_os = "macos")]
     pub fn current_frame(&self) -> Option<CVPixelBuffer> {
-        self.render_state.lock().current_frame.clone()
+        self.current_frame.lock().clone()
     }
 
     pub fn url(&self) -> &str {
@@ -768,7 +790,7 @@ impl BrowserTab {
         }
         #[cfg(target_os = "macos")]
         {
-            self.render_state.lock().current_frame = None;
+            *self.current_frame.lock() = None;
         }
     }
 

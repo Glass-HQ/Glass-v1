@@ -4,9 +4,11 @@ use gpui::{
 };
 #[cfg(not(target_os = "macos"))]
 use gpui::{
-    MouseButton, NativeImageScaling, ParentElement, div, native_image_view, native_tracking_view,
-    px, rems,
+    AnyElement, MouseButton, NativeImageScaling, ParentElement, UniformListScrollHandle, div,
+    native_image_view, native_tracking_view, px, rems, uniform_list,
 };
+#[cfg(not(target_os = "macos"))]
+use std::ops::Range;
 use ui::prelude::*;
 use workspace::{Workspace, WorkspaceTabsSidebarKind};
 use workspace_chrome::{SidebarNavigationList, SidebarNavigationListItem};
@@ -240,14 +242,256 @@ impl Render for BrowserSidebarPanel {
     }
 }
 
+/// Snapshot of tab state needed to build one row in the strip or sidebar.
+/// Collected from `Entity<BrowserTab>` once per render to avoid repeated entity-map lookups.
+#[cfg(not(target_os = "macos"))]
+struct TabRowData {
+    title: String,
+    favicon_url: Option<String>,
+    is_pinned: bool,
+}
+
 impl BrowserView {
     #[cfg(not(target_os = "macos"))]
-    pub(super) fn render_tab_strip(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn pinned_tab_count(&self, cx: &mut gpui::Context<Self>) -> usize {
+        self.tabs.iter().filter(|t| t.read(cx).is_pinned()).count()
+    }
+
+    /// Collect render data for all tabs in one pass (one entity read per tab).
+    #[cfg(not(target_os = "macos"))]
+    fn collect_tab_row_data(&self, cx: &gpui::App) -> Vec<TabRowData> {
+        self.tabs
+            .iter()
+            .map(|tab| {
+                let data = tab.read(cx);
+                TabRowData {
+                    title: data.title().to_string(),
+                    favicon_url: data.favicon_url().map(|s| s.to_string()),
+                    is_pinned: data.is_pinned(),
+                }
+            })
+            .collect()
+    }
+
+    /// `uniform_list` processor for the unpinned sidebar tab rows.
+    /// `range` is 0-based within the unpinned slice; `pinned_count` offsets into `self.tabs`.
+    #[cfg(not(target_os = "macos"))]
+    fn render_sidebar_tab_rows(
+        &mut self,
+        range: Range<usize>,
+        pinned_count: usize,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
         let theme = cx.theme();
         let active_index = self.active_tab_index;
         let view = cx.entity().downgrade();
+        let tab_radius = cx.theme().component_radius().tab.unwrap_or(px(8.0));
+        let btn_radius = cx.theme().component_radius().button.unwrap_or(px(4.0));
+        let selected_bg = theme.colors().text.opacity(0.14);
+        let hover_bg = theme.colors().text.opacity(0.09);
 
-        let pinned_count = self.tabs.iter().filter(|t| t.read(cx).is_pinned()).count();
+        range
+            .map(|local_index| {
+                let tab_index = pinned_count + local_index;
+                let (title, favicon_url, is_pinned) = {
+                    let data = self.tabs[tab_index].read(cx);
+                    let title = {
+                        let raw = data.title();
+                        if raw.len() > 24 {
+                            match raw.char_indices().nth(21) {
+                                Some((b, _)) => format!("{}...", &raw[..b]),
+                                None => raw.to_string(),
+                            }
+                        } else {
+                            raw.to_string()
+                        }
+                    };
+                    let favicon_url = data.favicon_url().map(|s| s.to_string());
+                    (title, favicon_url, data.is_pinned())
+                };
+
+                let is_active = tab_index == active_index;
+                let is_hovered = self.hovered_sidebar_tab_index == Some(tab_index);
+                let is_close_hovered = self.hovered_sidebar_tab_close_index == Some(tab_index);
+
+                let favicon_element = render_tab_favicon(
+                    SharedString::from(format!("sidebar-tab-favicon-{tab_index}")),
+                    favicon_url.as_deref(),
+                    cx,
+                );
+
+                let hover_view = view.clone();
+                let context_view = view.clone();
+
+                let tab_content = div()
+                    .id(("sidebar-tab-inner", tab_index))
+                    .relative()
+                    .flex()
+                    .items_center()
+                    .w(px(SIDEBAR_WIDTH_PX - 8.0))
+                    .h(px(28.))
+                    .px_2()
+                    .gap_1()
+                    .flex_shrink_0()
+                    .rounded(tab_radius)
+                    .cursor_pointer()
+                    .when(is_active, |this| this.bg(selected_bg))
+                    .when(is_hovered && !is_active, |this| this.bg(hover_bg))
+                    .when(!is_active, |this| {
+                        this.hover(move |style| style.bg(hover_bg))
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.switch_to_tab(tab_index, window, cx);
+                    }))
+                    .child(favicon_element)
+                    .child(
+                        div()
+                            .flex_1()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_size(rems(0.75))
+                            .text_color(if is_active {
+                                theme.colors().text
+                            } else {
+                                theme.colors().text_muted
+                            })
+                            .child(title),
+                    )
+                    .when(is_hovered, |this| {
+                        let close_hover_view = view.clone();
+                        this.child(
+                            div()
+                                .id(SharedString::from(format!(
+                                    "sidebar-close-tab-{tab_index}"
+                                )))
+                                .relative()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .w(px(16.))
+                                .h(px(16.))
+                                .rounded(btn_radius)
+                                .cursor_pointer()
+                                .when(is_close_hovered, |this| this.bg(hover_bg))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.close_tab_at(tab_index, window, cx);
+                                }))
+                                .child(
+                                    native_image_view(SharedString::from(format!(
+                                        "sidebar-close-tab-icon-{tab_index}"
+                                    )))
+                                    .sf_symbol("xmark")
+                                    .w(px(8.))
+                                    .h(px(8.)),
+                                )
+                                .child(
+                                    native_tracking_view(format!(
+                                        "sidebar-close-tab-track-{tab_index}"
+                                    ))
+                                    .on_mouse_enter(move |_, _window, cx| {
+                                        close_hover_view
+                                            .update(cx, |this, cx| {
+                                                if this.hovered_sidebar_tab_close_index
+                                                    != Some(tab_index)
+                                                {
+                                                    this.hovered_sidebar_tab_close_index =
+                                                        Some(tab_index);
+                                                    cx.notify();
+                                                }
+                                            })
+                                            .ok();
+                                    })
+                                    .on_mouse_exit({
+                                        let close_hover_view = view.clone();
+                                        move |_, _window, cx| {
+                                            close_hover_view
+                                                .update(cx, |this, cx| {
+                                                    if this.hovered_sidebar_tab_close_index
+                                                        == Some(tab_index)
+                                                    {
+                                                        this.hovered_sidebar_tab_close_index =
+                                                            None;
+                                                        cx.notify();
+                                                    }
+                                                })
+                                                .ok();
+                                        }
+                                    })
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .size_full(),
+                                ),
+                        )
+                    })
+                    .child(
+                        native_tracking_view(format!("sidebar-tab-track-{tab_index}"))
+                            .on_mouse_enter(move |_, _window, cx| {
+                                hover_view
+                                    .update(cx, |this, cx| {
+                                        if this.hovered_sidebar_tab_index != Some(tab_index) {
+                                            this.hovered_sidebar_tab_index = Some(tab_index);
+                                            cx.notify();
+                                        }
+                                    })
+                                    .ok();
+                            })
+                            .on_mouse_exit({
+                                let hover_view = view.clone();
+                                move |_, _window, cx| {
+                                    hover_view
+                                        .update(cx, |this, cx| {
+                                            if this.hovered_sidebar_tab_index == Some(tab_index) {
+                                                this.hovered_sidebar_tab_index = None;
+                                                this.hovered_sidebar_tab_close_index = None;
+                                                cx.notify();
+                                            }
+                                        })
+                                        .ok();
+                                }
+                            })
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .size_full(),
+                    );
+
+                // mb_1 provides the gap between rows (equivalent to gap_1 on the old container)
+                div()
+                    .w_full()
+                    .mb_1()
+                    .child(
+                        tab_content.on_mouse_down(
+                            MouseButton::Right,
+                            move |event, window, cx| {
+                                show_tab_context_menu(
+                                    context_view.clone(),
+                                    tab_index,
+                                    is_pinned,
+                                    event.position,
+                                    window,
+                                    cx,
+                                );
+                            },
+                        ),
+                    )
+                    .into_any_element()
+            })
+            .collect()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub(super) fn render_tab_strip(
+        &mut self,
+        pinned_count: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let theme = cx.theme();
+        let active_index = self.active_tab_index;
+        let view = cx.entity().downgrade();
+        // Pre-collect all tab data in a single pass to avoid repeated entity reads.
+        let tab_data = self.collect_tab_row_data(cx);
 
         h_flex()
             .w_full()
@@ -268,10 +512,9 @@ impl BrowserView {
                         .bg(theme.colors().text.opacity(0.06))
                         .border_1()
                         .border_color(theme.colors().border.opacity(0.4))
-                        .children(self.tabs.iter().enumerate().take(pinned_count).map(
-                            |(index, tab)| {
-                                let tab_data = tab.read(cx);
-                                let favicon_url = tab_data.favicon_url();
+                        .children(tab_data.iter().enumerate().take(pinned_count).map(
+                            |(index, row)| {
+                                let favicon_url = row.favicon_url.as_deref();
                                 let is_active = index == active_index;
                                 let is_hovered = self.hovered_top_tab_index == Some(index);
                                 let selected_bg = theme.colors().text.opacity(0.14);
@@ -358,17 +601,16 @@ impl BrowserView {
                         )),
                 )
             })
-            // Unpinned tabs
+            // Unpinned tabs — iterate pre-collected data, no further entity reads needed
             .children(
-                self.tabs
+                tab_data
                     .iter()
                     .enumerate()
                     .skip(pinned_count)
-                    .map(|(index, tab)| {
-                        let tab_data = tab.read(cx);
-                        let title = tab_data.title().to_string();
-                        let favicon_url = tab_data.favicon_url();
-                        let is_pinned = tab_data.is_pinned();
+                    .map(|(index, row)| {
+                        let title = row.title.clone();
+                        let favicon_url = row.favicon_url.as_deref();
+                        let is_pinned = row.is_pinned;
                         let is_active = index == active_index;
                         let is_hovered = self.hovered_top_tab_index == Some(index);
                         let is_close_hovered = self.hovered_top_tab_close_index == Some(index);
@@ -613,13 +855,26 @@ impl BrowserView {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub(super) fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_sidebar(
+        &mut self,
+        pinned_count: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
-        let active_index = self.active_tab_index;
-        let view = cx.entity().downgrade();
+        let unpinned_count = self.tabs.len().saturating_sub(pinned_count);
+        // Clone the handle so the uniform_list element can track scroll state without
+        // borrowing `self` for the lifetime of the returned element.
+        let scroll_handle = self.sidebar_scroll_handle.clone();
 
-        let pinned_count = self.tabs.iter().filter(|t| t.read(cx).is_pinned()).count();
-        let grid_cols = pinned_count.min(3);
+        // Pre-collect pinned tab data in a single pass (avoids repeated entity reads in the grid).
+        let pinned_data = if pinned_count > 0 {
+            self.collect_tab_row_data(cx)
+                .into_iter()
+                .take(pinned_count)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
 
         v_flex()
             .h_full()
@@ -629,246 +884,95 @@ impl BrowserView {
             .bg(theme.colors().title_bar_background)
             .border_r_1()
             .border_color(theme.colors().border)
-            .child(
-                v_flex()
-                    .id("sidebar-tab-list")
-                    .flex_1()
-                    .items_stretch()
-                    .overflow_y_scroll()
-                    .p_1()
-                    .gap_1()
-                    .when(pinned_count > 0, |this| {
-                        let pinned_rows: Vec<Vec<usize>> = (0..pinned_count)
-                            .collect::<Vec<_>>()
-                            .chunks(grid_cols)
-                            .map(|chunk| chunk.to_vec())
-                            .collect();
+            // ── Pinned tab grid ── fixed at top, never scrolls ─────────────
+            .when(pinned_count > 0, |outer| {
+                let grid_cols = pinned_count.min(3);
+                let active_index = self.active_tab_index;
+                let view = cx.entity().downgrade();
+                let tab_radius = cx.theme().component_radius().tab.unwrap_or(px(8.0));
+                let selected_bg = theme.colors().text.opacity(0.14);
+                let hover_bg = theme.colors().text.opacity(0.09);
 
-                        this.child(
-                            v_flex().gap_1().children(
-                                pinned_rows.into_iter().map(|row| {
-                                    h_flex()
-                                        .gap_1()
-                                        .children(row.into_iter().map(|index| {
-                                            let tab = &self.tabs[index];
-                                            let tab_data = tab.read(cx);
-                                            let favicon_url = tab_data.favicon_url();
-                                            let is_active = index == active_index;
-                                            let is_hovered =
-                                                self.hovered_sidebar_tab_index == Some(index);
-                                            let selected_bg =
-                                                theme.colors().text.opacity(0.14);
-                                            let hover_bg = theme.colors().text.opacity(0.09);
+                let pinned_rows: Vec<Vec<usize>> = (0..pinned_count)
+                    .collect::<Vec<_>>()
+                    .chunks(grid_cols)
+                    .map(|c| c.to_vec())
+                    .collect();
 
-                                            let favicon_element = render_tab_favicon(
-                                                SharedString::from(format!(
-                                                    "sidebar-tab-favicon-{index}"
-                                                )),
-                                                favicon_url,
-                                                cx,
-                                            );
+                outer.child(
+                    v_flex()
+                        .p_1()
+                        .gap_1()
+                        .child(v_flex().gap_1().children(
+                            pinned_rows.into_iter().map(|row| {
+                                let row_view = view.clone();
+                                h_flex()
+                                    .gap_1()
+                                    .children(row.into_iter().map(|index| {
+                                        let row_data = &pinned_data[index];
+                                        let favicon_url = row_data.favicon_url.as_deref();
+                                        let is_active = index == active_index;
+                                        let is_hovered =
+                                            self.hovered_sidebar_tab_index == Some(index);
 
-                                            let hover_view = view.clone();
-                                            let context_view = view.clone();
+                                        let favicon_element = render_tab_favicon(
+                                            SharedString::from(format!(
+                                                "sidebar-tab-favicon-{index}"
+                                            )),
+                                            favicon_url,
+                                            cx,
+                                        );
+                                        let hover_view = row_view.clone();
+                                        let context_view = row_view.clone();
 
-                                            div()
-                                                .id(("sidebar-tab-inner", index))
-                                                .relative()
-                                                .flex()
-                                                .flex_1()
-                                                .items_center()
-                                                .justify_center()
-                                                .h(px(36.))
-                                                .flex_shrink_0()
-                                                .rounded(cx.theme().component_radius().tab.unwrap_or(px(8.0)))
-                                                .cursor_pointer()
-                                                .when(is_active, |this| {
-                                                    this.bg(selected_bg)
-                                                })
-                                                .when(is_hovered && !is_active, |this| {
-                                                    this.bg(hover_bg)
-                                                })
-                                                .when(!is_active, |this| {
-                                                    this.hover(move |style| {
-                                                        style.bg(hover_bg)
-                                                    })
-                                                })
-                                                .on_click(cx.listener(
-                                                    move |this, _, window, cx| {
-                                                        this.switch_to_tab(
-                                                            index, window, cx,
-                                                        );
-                                                    },
-                                                ))
-                                                .on_mouse_down(
-                                                    MouseButton::Right,
-                                                    move |event, window, cx| {
-                                                        show_tab_context_menu(
-                                                            context_view.clone(),
-                                                            index,
-                                                            true,
-                                                            event.position,
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    },
-                                                )
-                                                .child(favicon_element)
-                                                .child(
-                                                    native_tracking_view(format!(
-                                                        "sidebar-tab-track-{index}"
-                                                    ))
-                                                    .on_mouse_enter(
-                                                        move |_, _window, cx| {
-                                                            hover_view
-                                                                .update(cx, |this, cx| {
-                                                                    if this
-                                                                        .hovered_sidebar_tab_index
-                                                                        != Some(index)
-                                                                    {
-                                                                        this.hovered_sidebar_tab_index = Some(index);
-                                                                        cx.notify();
-                                                                    }
-                                                                })
-                                                                .ok();
-                                                        },
-                                                    )
-                                                    .on_mouse_exit({
-                                                        let hover_view = view.clone();
-                                                        move |_, _window, cx| {
-                                                            hover_view
-                                                                .update(cx, |this, cx| {
-                                                                    if this
-                                                                        .hovered_sidebar_tab_index
-                                                                        == Some(index)
-                                                                    {
-                                                                        this.hovered_sidebar_tab_index = None;
-                                                                        this.hovered_sidebar_tab_close_index = None;
-                                                                        cx.notify();
-                                                                    }
-                                                                })
-                                                                .ok();
-                                                        }
-                                                    })
-                                                    .absolute()
-                                                    .top_0()
-                                                    .left_0()
-                                                    .size_full(),
-                                                )
-                                                .into_any_element()
-                                        }))
-                                        .into_any_element()
-                                }),
-                            ),
-                        )
-                    })
-                    .children(self.tabs.iter().enumerate().skip(pinned_count).map(
-                        |(index, tab)| {
-                            let tab_data = tab.read(cx);
-                            let title = tab_data.title().to_string();
-                            let favicon_url = tab_data.favicon_url();
-                            let is_pinned = tab_data.is_pinned();
-                            let is_active = index == active_index;
-                            let is_hovered = self.hovered_sidebar_tab_index == Some(index);
-                            let is_close_hovered =
-                                self.hovered_sidebar_tab_close_index == Some(index);
-                            let selected_bg = theme.colors().text.opacity(0.14);
-                            let hover_bg = theme.colors().text.opacity(0.09);
-
-                            let favicon_element = render_tab_favicon(
-                                SharedString::from(format!("sidebar-tab-favicon-{index}")),
-                                favicon_url,
-                                cx,
-                            );
-
-                            let display_title = if title.len() > 24 {
-                                let truncated = match title.char_indices().nth(21) {
-                                    Some((byte_index, _)) => &title[..byte_index],
-                                    None => &title,
-                                };
-                                format!("{truncated}...")
-                            } else {
-                                title
-                            };
-
-                            let hover_view = view.clone();
-                            let context_view = view.clone();
-                            let tab_content = div()
-                                .id(("sidebar-tab-inner", index))
-                                .relative()
-                                .flex()
-                                .items_center()
-                                .w(px(SIDEBAR_WIDTH_PX - 8.0))
-                                .h(px(28.))
-                                .px_2()
-                                .gap_1()
-                                .flex_shrink_0()
-                                .rounded(cx.theme().component_radius().tab.unwrap_or(px(8.0)))
-                                .cursor_pointer()
-                                .when(is_active, |this| this.bg(selected_bg))
-                                .when(is_hovered && !is_active, |this| this.bg(hover_bg))
-                                .when(!is_active, |this| {
-                                    this.hover(move |style| style.bg(hover_bg))
-                                })
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.switch_to_tab(index, window, cx);
-                                }))
-                                .child(favicon_element)
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .overflow_hidden()
-                                        .whitespace_nowrap()
-                                        .text_ellipsis()
-                                        .text_size(rems(0.75))
-                                        .text_color(if is_active {
-                                            theme.colors().text
-                                        } else {
-                                            theme.colors().text_muted
-                                        })
-                                        .child(display_title),
-                                )
-                                .when(is_hovered, |this| {
-                                    let close_hover_view = view.clone();
-                                    this.child(
                                         div()
-                                            .id(SharedString::from(format!(
-                                                "sidebar-close-tab-{index}"
-                                            )))
+                                            .id(("sidebar-tab-inner", index))
                                             .relative()
                                             .flex()
+                                            .flex_1()
                                             .items_center()
                                             .justify_center()
-                                            .w(px(16.))
-                                            .h(px(16.))
-                                            .rounded(cx.theme().component_radius().button.unwrap_or(px(4.0)))
+                                            .h(px(36.))
+                                            .flex_shrink_0()
+                                            .rounded(tab_radius)
                                             .cursor_pointer()
-                                            .when(is_close_hovered, |this| this.bg(hover_bg))
+                                            .when(is_active, |this| this.bg(selected_bg))
+                                            .when(is_hovered && !is_active, |this| {
+                                                this.bg(hover_bg)
+                                            })
+                                            .when(!is_active, |this| {
+                                                this.hover(move |style| style.bg(hover_bg))
+                                            })
                                             .on_click(cx.listener(
                                                 move |this, _, window, cx| {
-                                                    this.close_tab_at(index, window, cx);
+                                                    this.switch_to_tab(index, window, cx);
                                                 },
                                             ))
-                                            .child(
-                                                native_image_view(SharedString::from(format!(
-                                                    "sidebar-close-tab-icon-{index}"
-                                                )))
-                                                .sf_symbol("xmark")
-                                                .w(px(8.))
-                                                .h(px(8.)),
+                                            .on_mouse_down(
+                                                MouseButton::Right,
+                                                move |event, window, cx| {
+                                                    show_tab_context_menu(
+                                                        context_view.clone(),
+                                                        index,
+                                                        true,
+                                                        event.position,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
                                             )
+                                            .child(favicon_element)
                                             .child(
                                                 native_tracking_view(format!(
-                                                    "sidebar-close-tab-track-{index}"
+                                                    "sidebar-tab-track-{index}"
                                                 ))
                                                 .on_mouse_enter(move |_, _window, cx| {
-                                                    close_hover_view
+                                                    hover_view
                                                         .update(cx, |this, cx| {
-                                                            if this
-                                                                .hovered_sidebar_tab_close_index
+                                                            if this.hovered_sidebar_tab_index
                                                                 != Some(index)
                                                             {
-                                                                this.hovered_sidebar_tab_close_index =
+                                                                this.hovered_sidebar_tab_index =
                                                                     Some(index);
                                                                 cx.notify();
                                                             }
@@ -876,14 +980,15 @@ impl BrowserView {
                                                         .ok();
                                                 })
                                                 .on_mouse_exit({
-                                                    let close_hover_view = view.clone();
+                                                    let hover_view = row_view.clone();
                                                     move |_, _window, cx| {
-                                                        close_hover_view
+                                                        hover_view
                                                             .update(cx, |this, cx| {
-                                                                if this
-                                                                    .hovered_sidebar_tab_close_index
+                                                                if this.hovered_sidebar_tab_index
                                                                     == Some(index)
                                                                 {
+                                                                    this.hovered_sidebar_tab_index =
+                                                                        None;
                                                                     this.hovered_sidebar_tab_close_index =
                                                                         None;
                                                                     cx.notify();
@@ -896,66 +1001,35 @@ impl BrowserView {
                                                 .top_0()
                                                 .left_0()
                                                 .size_full(),
-                                            ),
-                                    )
-                                })
-                                .child(
-                                    native_tracking_view(format!("sidebar-tab-track-{index}"))
-                                        .on_mouse_enter(move |_, _window, cx| {
-                                            hover_view
-                                                .update(cx, |this, cx| {
-                                                    if this.hovered_sidebar_tab_index
-                                                        != Some(index)
-                                                    {
-                                                        this.hovered_sidebar_tab_index =
-                                                            Some(index);
-                                                        cx.notify();
-                                                    }
-                                                })
-                                                .ok();
-                                        })
-                                        .on_mouse_exit({
-                                            let hover_view = view.clone();
-                                            move |_, _window, cx| {
-                                                hover_view
-                                                    .update(cx, |this, cx| {
-                                                        if this.hovered_sidebar_tab_index
-                                                            == Some(index)
-                                                        {
-                                                            this.hovered_sidebar_tab_index = None;
-                                                            this.hovered_sidebar_tab_close_index =
-                                                                None;
-                                                            cx.notify();
-                                                        }
-                                                    })
-                                                    .ok();
-                                            }
-                                        })
-                                        .absolute()
-                                        .top_0()
-                                        .left_0()
-                                        .size_full(),
-                                );
-
-                            div().w_full().child(
-                                tab_content.on_mouse_down(
-                                    MouseButton::Right,
-                                    move |event, window, cx| {
-                                        show_tab_context_menu(
-                                            context_view.clone(),
-                                            index,
-                                            is_pinned,
-                                            event.position,
-                                            window,
-                                            cx,
-                                        );
-                                    },
-                                ),
-                            )
-                        },
-                    )),
-            )
+                                            )
+                                            .into_any_element()
+                                    }))
+                                    .into_any_element()
+                            }),
+                        )),
+                )
+            })
+            // ── Virtualized unpinned tab list ───────────────────────────────
+            // uniform_list renders only the rows visible in the viewport;
+            // with 50+ tabs this drops element construction from O(n) to O(visible).
             .child(
+                uniform_list(
+                    "sidebar-unpinned-tabs",
+                    unpinned_count,
+                    {
+                        let pinned_count = pinned_count;
+                        cx.processor(move |this, range: Range<usize>, _window, cx| {
+                            this.render_sidebar_tab_rows(range, pinned_count, cx)
+                        })
+                    },
+                )
+                .p_1()
+                .flex_grow()
+                .track_scroll(&scroll_handle),
+            )
+            // ── New tab button pinned at bottom ─────────────────────────────
+            .child({
+                let view = cx.entity().downgrade();
                 div()
                     .w_full()
                     .p_1()
@@ -1000,7 +1074,6 @@ impl BrowserView {
                                         }
                                     })
                                     .on_mouse_exit({
-                                        let view = view.clone();
                                         move |_, _window, cx| {
                                             view.update(cx, |this, cx| {
                                                 if this.hovered_sidebar_new_tab_button {
@@ -1016,7 +1089,7 @@ impl BrowserView {
                                     .left_0()
                                     .size_full(),
                             ),
-                    ),
-            )
+                    )
+            })
     }
 }

@@ -30,6 +30,8 @@ use gpui::{
     InteractiveElement, IntoElement, ParentElement, Pixels, Render, SharedString, Styled,
     Subscription, Task, UTF16Selection, WeakEntity, Window, actions, div, point, prelude::*, size,
 };
+#[cfg(not(target_os = "macos"))]
+use gpui::UniformListScrollHandle;
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use workspace::{
@@ -213,6 +215,8 @@ pub struct BrowserView {
     #[cfg(not(target_os = "macos"))]
     sidebar_collapsed: bool,
     sidebar_visible: bool,
+    #[cfg(not(target_os = "macos"))]
+    sidebar_scroll_handle: UniformListScrollHandle,
     native_sidebar_panel: Option<Entity<tab_strip::BrowserSidebarPanel>>,
     focus_listeners_registered: bool,
     toast_layer: Entity<toast::ToastLayer>,
@@ -309,6 +313,8 @@ impl BrowserView {
             #[cfg(not(target_os = "macos"))]
             sidebar_collapsed: false,
             sidebar_visible: false,
+            #[cfg(not(target_os = "macos"))]
+            sidebar_scroll_handle: UniformListScrollHandle::default(),
             native_sidebar_panel: None,
             focus_listeners_registered: false,
             toast_layer,
@@ -848,7 +854,9 @@ impl BrowserView {
         match event {
             #[cfg(target_os = "macos")]
             TabEvent::FrameReady => {
-                cx.notify();
+                if self.surface_state == BrowserSurfaceState::Visible {
+                    cx.notify();
+                }
             }
             TabEvent::NavigateToUrl(url) => {
                 let url = url.clone();
@@ -1493,26 +1501,29 @@ impl Render for BrowserView {
             .into_any_element();
 
         #[cfg(not(target_os = "macos"))]
-        let element = match self.tab_bar_mode {
-            TabBarMode::Horizontal => element
-                .flex_col()
-                .child(div().mt(px(-1.)).child(self.render_tab_strip(cx)))
-                .child(self.bookmark_bar.clone())
-                .child(self.render_browser_content(window, cx))
-                .into_any_element(),
-            TabBarMode::Sidebar => element
-                .flex_row()
-                .child(self.render_sidebar(cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .flex_col()
-                        .overflow_hidden()
-                        .child(self.bookmark_bar.clone())
-                        .child(self.render_browser_content(window, cx)),
-                )
-                .into_any_element(),
+        let element = {
+            let pinned_count = self.pinned_tab_count(cx);
+            match self.tab_bar_mode {
+                TabBarMode::Horizontal => element
+                    .flex_col()
+                    .child(div().mt(px(-1.)).child(self.render_tab_strip(pinned_count, cx)))
+                    .child(self.bookmark_bar.clone())
+                    .child(self.render_browser_content(window, cx))
+                    .into_any_element(),
+                TabBarMode::Sidebar => element
+                    .flex_row()
+                    .child(self.render_sidebar(pinned_count, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .overflow_hidden()
+                            .child(self.bookmark_bar.clone())
+                            .child(self.render_browser_content(window, cx)),
+                    )
+                    .into_any_element(),
+            }
         };
 
         div()

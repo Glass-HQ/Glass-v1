@@ -20,12 +20,12 @@ use io_surface::IOSurface;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
+/// Viewport geometry shared between the GPUI resize path and CEF's view_rect/screen_info callbacks.
+/// Kept separate from the frame buffer so geometry reads never contend with 60fps frame writes.
 pub struct RenderState {
     pub width: u32,
     pub height: u32,
     pub scale_factor: f32,
-    #[cfg(target_os = "macos")]
-    pub current_frame: Option<CVPixelBuffer>,
 }
 
 impl Default for RenderState {
@@ -34,8 +34,6 @@ impl Default for RenderState {
             width: 800,
             height: 600,
             scale_factor: 1.0,
-            #[cfg(target_os = "macos")]
-            current_frame: None,
         }
     }
 }
@@ -44,14 +42,24 @@ impl Default for RenderState {
 pub struct OsrRenderHandler {
     state: Arc<Mutex<RenderState>>,
     #[cfg(target_os = "macos")]
+    current_frame: Arc<Mutex<Option<CVPixelBuffer>>>,
+    #[cfg(target_os = "macos")]
     sender: EventSender,
 }
 
 impl OsrRenderHandler {
-    pub fn new(state: Arc<Mutex<RenderState>>, sender: EventSender) -> Self {
+    pub fn new(
+        state: Arc<Mutex<RenderState>>,
+        #[cfg(target_os = "macos")] current_frame: Arc<Mutex<Option<CVPixelBuffer>>>,
+        sender: EventSender,
+    ) -> Self {
         #[cfg(target_os = "macos")]
         {
-            Self { state, sender }
+            Self {
+                state,
+                current_frame,
+                sender,
+            }
         }
 
         #[cfg(not(target_os = "macos"))]
@@ -153,7 +161,7 @@ wrap_render_handler! {
                     }
                 };
 
-                self.handler.state.lock().current_frame = Some(pixel_buffer);
+                *self.handler.current_frame.lock() = Some(pixel_buffer);
                 let _ = self.handler.sender.send(BrowserEvent::FrameReady);
             }
 
