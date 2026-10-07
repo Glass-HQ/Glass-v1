@@ -9,9 +9,9 @@ open_result=false
 local_install=false
 can_code_sign=false
 
-# This must match the team in the provisioning profile.
-IDENTITY="Zed Industries, Inc."
-APPLE_NOTARIZATION_TEAM="MQ55VZLNZQ"
+# This must match the Apple-issued Developer ID identity and team used for signing.
+IDENTITY="Developer ID Application: EasyLink (DA7B5U47PT)"
+APPLE_NOTARIZATION_TEAM="DA7B5U47PT"
 
 # Function for displaying help info
 help_info() {
@@ -214,8 +214,8 @@ function sign_app_binaries() {
 
         # NOTE: if you need to test universal links you have a few paths forward:
         # - create a PR and tag it with the `run-bundling` label, and download the .dmg file from there.
-        # - get a signing key for the MQ55VZLNZQ team from Nathan.
-        # - create your own signing key, and update references to MQ55VZLNZQ to your own team ID
+        # - get a signing key for the DA7B5U47PT team.
+        # - create your own signing key, and update references to DA7B5U47PT to your own team ID
         # then comment out this line.
         cat crates/zed/resources/zed.entitlements | sed '/com.apple.developer.associated-domains/,+1d' > "${app_path}/Contents/Resources/zed.entitlements"
 
@@ -271,7 +271,7 @@ function sign_app_binaries() {
         if [[ $can_code_sign = true ]]; then
             echo "Notarizing DMG with Apple"
             /usr/bin/codesign --deep --force --timestamp --options runtime --sign "$IDENTITY" "$(pwd)/${dmg_file_path}" -v
-            echo "$APPLE_NOTARIZATION_KEY" > "$notarization_key_file"
+            echo "$APPLE_NOTARIZATION_KEY" | base64 --decode > "$notarization_key_file"
             "${xcode_bin_dir_path}/notarytool" submit --wait --key "$notarization_key_file" --key-id "$APPLE_NOTARIZATION_KEY_ID" --issuer "$APPLE_NOTARIZATION_ISSUER_ID" "${dmg_file_path}"
             rm "$notarization_key_file"
             "${xcode_bin_dir_path}/stapler" staple "${dmg_file_path}"

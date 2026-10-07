@@ -1957,7 +1957,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.11.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1977,7 +1977,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.11.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "regex",
@@ -3346,7 +3346,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "indexmap",
  "rustc-hash 2.1.1",
@@ -5032,7 +5032,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7277,7 +7277,7 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows 0.61.3",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -7747,7 +7747,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.17",
- "windows 0.62.2",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -7773,7 +7773,7 @@ dependencies = [
 [[package]]
 name = "gpui"
 version = "0.2.2"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -7855,7 +7855,7 @@ dependencies = [
 [[package]]
 name = "gpui_ios"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "block",
@@ -7884,7 +7884,7 @@ dependencies = [
 [[package]]
 name = "gpui_linux"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7914,7 +7914,7 @@ dependencies = [
 [[package]]
 name = "gpui_macos"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "async-task",
@@ -7955,7 +7955,7 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -7966,7 +7966,7 @@ dependencies = [
 [[package]]
 name = "gpui_metal"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "block",
@@ -7991,7 +7991,7 @@ dependencies = [
 [[package]]
 name = "gpui_platform"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "console_error_panic_hook",
  "gpui",
@@ -8012,7 +8012,7 @@ dependencies = [
 [[package]]
 name = "gpui_tokio"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "gpui",
@@ -8023,7 +8023,7 @@ dependencies = [
 [[package]]
 name = "gpui_util"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "log",
@@ -8032,7 +8032,7 @@ dependencies = [
 [[package]]
 name = "gpui_web"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -8056,7 +8056,7 @@ dependencies = [
 [[package]]
 name = "gpui_wgpu"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -8083,7 +8083,7 @@ dependencies = [
 [[package]]
 name = "gpui_windows"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "collections",
@@ -8565,7 +8565,7 @@ checksum = "add0ab9360ddbd88cfeb3bd9574a1d85cfdfa14db10b3e21d3700dbc4328758f"
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -8590,7 +8590,7 @@ dependencies = [
 [[package]]
 name = "http_client_tls"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "rustls 0.23.33",
  "rustls-platform-verifier",
@@ -8762,7 +8762,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -10709,7 +10709,7 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "bindgen 0.71.1",
@@ -13828,7 +13828,7 @@ checksum = "22505a5c94da8e3b7c2996394d1c933236c4d743e81a410bcca4e6989fc066a4"
 dependencies = [
  "bytes 1.11.1",
  "heck 0.5.0",
- "itertools 0.11.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "once_cell",
@@ -13861,7 +13861,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81bddcdb20abf9501610992b6759a4c888aef7d1a7247ef75e2404275ac24af1"
 dependencies = [
  "anyhow",
- "itertools 0.11.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -14590,7 +14590,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "derive_refineable",
 ]
@@ -15568,7 +15568,7 @@ dependencies = [
 [[package]]
 name = "scheduler"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "async-task",
  "backtrace",
@@ -17179,7 +17179,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "heapless",
  "log",
@@ -19524,7 +19524,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/Glass-HQ/gpui.git?rev=3790fca95dbf00918859192c8f51a35f1c46a444#3790fca95dbf00918859192c8f51a35f1c46a444"
+source = "git+https://github.com/Glass-HQ/gpui.git?rev=23b0a377d551cf1356fc942aaba2d6958d9777cd#23b0a377d551cf1356fc942aaba2d6958d9777cd"
 dependencies = [
  "anyhow",
  "async-fs",

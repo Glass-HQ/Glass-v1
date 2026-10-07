@@ -47,6 +47,11 @@ jobs:
         with:
           clean: false
 
+      - name: Set app version
+        run: |
+          echo "APP_VERSION=${RELEASE_VERSION#v}" >> "$GITHUB_ENV"
+          echo "ZED_APP_VERSION=${RELEASE_VERSION#v}" >> "$GITHUB_ENV"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -242,7 +247,7 @@ jobs:
           echo "Generated Glass.icns"
 
           # Generate Info.plist with all bundle metadata and plist extensions merged
-          cat > "$APP_PATH/Contents/Info.plist" << 'PLIST'
+          cat > "$APP_PATH/Contents/Info.plist" << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -264,9 +269,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>0.0.1</string>
+              <string>$APP_VERSION</string>
               <key>CFBundleVersion</key>
-              <string>0.0.1</string>
+              <string>$APP_VERSION</string>
               <key>LSMinimumSystemVersion</key>
               <string>10.15.7</string>
               <key>NSHighResolutionCapable</key>
@@ -868,6 +873,17 @@ jobs:
           security default-keychain -s login.keychain || true
           security delete-keychain build.keychain || true
 
+      - name: Package remote server binary
+        run: |
+          REMOTE_SERVER_BIN="target/${{ matrix.target }}/release/remote_server"
+          REMOTE_SERVER_GZ="target/${{ matrix.target }}/release/zed-remote-server-macos-${{ matrix.arch }}.gz"
+          if [ -f "$REMOTE_SERVER_BIN" ]; then
+            gzip -c "$REMOTE_SERVER_BIN" > "$REMOTE_SERVER_GZ"
+            echo "Packaged remote server: $REMOTE_SERVER_GZ ($(du -h "$REMOTE_SERVER_GZ" | cut -f1))"
+          else
+            echo "WARNING: remote_server binary not found at $REMOTE_SERVER_BIN"
+          fi
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
@@ -882,9 +898,222 @@ jobs:
           path: target/${{ matrix.target }}/release/Glass-${{ matrix.arch }}-symbols.zip
           if-no-files-found: error
 
+      - name: Upload remote server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-remote-server-macos-${{ matrix.arch }}.gz
+          path: target/${{ matrix.target }}/release/zed-remote-server-macos-${{ matrix.arch }}.gz
+          if-no-files-found: error
+
+  bundle-macos-x86_64-remote-server:
+    name: Bundle macOS remote server (x86_64)
+    runs-on: macos-15-intel
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
+      APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+      APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Set app version
+        run: |
+          echo "ZED_APP_VERSION=${RELEASE_VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Sentry
+        uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Build macOS remote server bundle
+        run: ./script/bundle-mac x86_64-apple-darwin
+
+      - name: Upload remote server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-remote-server-macos-x86_64.gz
+          path: target/zed-remote-server-macos-x86_64.gz
+          if-no-files-found: error
+
+  bundle-linux-aarch64-remote-server:
+    name: Bundle Linux remote server (aarch64)
+    runs-on: namespace-profile-8x32-ubuntu-2004-arm-m4
+    env:
+      CC: clang-18
+      CXX: clang++-18
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Set app version
+        run: |
+          echo "ZED_APP_VERSION=${RELEASE_VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Setup Sentry
+        uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Setup Linux build environment
+        run: ./script/linux
+
+      - name: Download WASI SDK
+        run: ./script/download-wasi-sdk
+
+      - name: Build Linux remote server bundle
+        run: ./script/bundle-linux
+
+      - name: Upload remote server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-remote-server-linux-aarch64.gz
+          path: target/zed-remote-server-linux-aarch64.gz
+          if-no-files-found: error
+
+  bundle-linux-x86_64-remote-server:
+    name: Bundle Linux remote server (x86_64)
+    runs-on: namespace-profile-32x64-ubuntu-2004
+    env:
+      CC: clang-18
+      CXX: clang++-18
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Set app version
+        run: |
+          echo "ZED_APP_VERSION=${RELEASE_VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Setup Sentry
+        uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Setup Linux build environment
+        run: ./script/linux
+
+      - name: Download WASI SDK
+        run: ./script/download-wasi-sdk
+
+      - name: Build Linux remote server bundle
+        run: ./script/bundle-linux
+
+      - name: Upload remote server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-remote-server-linux-x86_64.gz
+          path: target/zed-remote-server-linux-x86_64.gz
+          if-no-files-found: error
+
+  bundle-windows-aarch64-remote-server:
+    name: Bundle Windows remote server (aarch64)
+    runs-on: self-32vcpu-windows-2022
+    env:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_SIGNING_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_SIGNING_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SIGNING_CLIENT_SECRET }}
+      ACCOUNT_NAME: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+      CERT_PROFILE_NAME: ${{ vars.AZURE_SIGNING_CERT_PROFILE_NAME }}
+      ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+      FILE_DIGEST: SHA256
+      TIMESTAMP_DIGEST: SHA256
+      TIMESTAMP_SERVER: http://timestamp.acs.microsoft.com
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Set app version
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_VERSION.TrimStart('v')
+          "ZED_APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup Sentry
+        uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Build Windows remote server bundle
+        run: ./script/bundle-windows.ps1 -Architecture aarch64
+        shell: pwsh
+
+      - name: Upload remote server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-remote-server-windows-aarch64.zip
+          path: target/zed-remote-server-windows-aarch64.zip
+          if-no-files-found: error
+
+  bundle-windows-x86_64-remote-server:
+    name: Bundle Windows remote server (x86_64)
+    runs-on: self-32vcpu-windows-2022
+    env:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_SIGNING_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_SIGNING_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SIGNING_CLIENT_SECRET }}
+      ACCOUNT_NAME: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+      CERT_PROFILE_NAME: ${{ vars.AZURE_SIGNING_CERT_PROFILE_NAME }}
+      ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+      FILE_DIGEST: SHA256
+      TIMESTAMP_DIGEST: SHA256
+      TIMESTAMP_SERVER: http://timestamp.acs.microsoft.com
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Set app version
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_VERSION.TrimStart('v')
+          "ZED_APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup Sentry
+        uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Build Windows remote server bundle
+        run: ./script/bundle-windows.ps1 -Architecture x86_64
+        shell: pwsh
+
+      - name: Upload remote server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-remote-server-windows-x86_64.zip
+          path: target/zed-remote-server-windows-x86_64.zip
+          if-no-files-found: error
+
   create-release:
     name: Create GitHub Release
-    needs: [build-macos]
+    needs:
+      - build-macos
+      - bundle-macos-x86_64-remote-server
+      - bundle-linux-aarch64-remote-server
+      - bundle-linux-x86_64-remote-server
+      - bundle-windows-aarch64-remote-server
+      - bundle-windows-x86_64-remote-server
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -918,8 +1147,12 @@ jobs:
           files: |
             artifacts/Glass-aarch64.dmg/Glass-aarch64.dmg
             artifacts/Glass-aarch64-symbols.zip/Glass-aarch64-symbols.zip
-            # Intel build disabled - uncomment when re-enabled:
-            # artifacts/Glass-x86_64.dmg/Glass-x86_64.dmg
+            artifacts/zed-remote-server-macos-aarch64.gz/zed-remote-server-macos-aarch64.gz
+            artifacts/zed-remote-server-macos-x86_64.gz/zed-remote-server-macos-x86_64.gz
+            artifacts/zed-remote-server-linux-aarch64.gz/zed-remote-server-linux-aarch64.gz
+            artifacts/zed-remote-server-linux-x86_64.gz/zed-remote-server-linux-x86_64.gz
+            artifacts/zed-remote-server-windows-aarch64.zip/zed-remote-server-windows-aarch64.zip
+            artifacts/zed-remote-server-windows-x86_64.zip/zed-remote-server-windows-x86_64.zip
           body: |
             ## Glass ${{ env.RELEASE_VERSION }}
 
@@ -930,3 +1163,27 @@ jobs:
             3. Launch Glass from Applications
 
             > **Note:** Only Apple Silicon builds are available at this time. Intel Mac support coming later.
+
+  validate-release-assets:
+    name: Validate release assets
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Verify all expected release assets are present
+        run: |
+          EXPECTED_ASSETS='["Glass-aarch64.dmg","Glass-aarch64-symbols.zip","zed-remote-server-macos-aarch64.gz","zed-remote-server-macos-x86_64.gz","zed-remote-server-linux-aarch64.gz","zed-remote-server-linux-x86_64.gz","zed-remote-server-windows-aarch64.zip","zed-remote-server-windows-x86_64.zip"]'
+          ACTUAL_ASSETS=$(gh release view "${{ env.RELEASE_VERSION }}" --repo Glass-HQ/Glass --json assets -q '[.assets[].name]')
+          MISSING_ASSETS=$(echo "$EXPECTED_ASSETS" | jq -r --argjson actual "$ACTUAL_ASSETS" '. - $actual | .[]')
+
+          if [ -n "$MISSING_ASSETS" ]; then
+            echo "Missing release assets:"
+            echo "$MISSING_ASSETS"
+            exit 1
+          fi
+
+          echo "All expected release assets are present."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
